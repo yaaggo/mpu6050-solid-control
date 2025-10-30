@@ -29,7 +29,7 @@ pico_sdk_init()
 file(GLOB INCLUDE "include/*.c")
 file(GLOB SRC "src/*.c")
 
-add_executable(mpu6050-solid-control src/main.c ${INCLUDE})
+add_executable(mpu6050-solid-control src/main.c src/display.c ${INCLUDE})
 
 pico_set_program_name(mpu6050-solid-control "mpu6050-solid-control")
 pico_set_program_version(mpu6050-solid-control "0.1")

@@ -3,10 +3,13 @@
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
 #include "../include/mpu6050.h"
+#include "display.h"  // Corrigido o caminho
 
 #define BOOTSEL_BUTTON_PIN 6
+#define BUTTON_A_PIN 5 
 
 mpu6050_t mpu;
+display disp;
 
 // Quaternion [w, x, y, z]
 float q[4] = {1.0f, 0.0f, 0.0f, 0.0f};
@@ -14,24 +17,41 @@ float beta = 0.1f; // Ganho do filtro Madgwick
 
 absolute_time_t last_time = 0;
 
+// Debounce dos botões
 volatile bool button_pressed = false;
+volatile bool button_a_pressed = false;
 volatile absolute_time_t last_button_time = 0;
+volatile absolute_time_t last_button_a_time = 0;
 
 void gpio_callback(uint gpio, uint32_t events) {
+    absolute_time_t now = get_absolute_time();
+    
     if (gpio == BOOTSEL_BUTTON_PIN) {
-        absolute_time_t now = get_absolute_time();
         if (absolute_time_diff_us(last_button_time, now) > 200000) {
             last_button_time = now;
             button_pressed = true;
         }
     }
+    else if (gpio == BUTTON_A_PIN) {
+        if (absolute_time_diff_us(last_button_a_time, now) > 200000) {
+            last_button_a_time = now;
+            button_a_pressed = true;
+        }
+    }
 }
 
-void setup_bootsel_button() {
+void setup_buttons() {
+    // Botão BOOTSEL
     gpio_init(BOOTSEL_BUTTON_PIN);
     gpio_set_dir(BOOTSEL_BUTTON_PIN, GPIO_IN);
     gpio_pull_up(BOOTSEL_BUTTON_PIN);
     gpio_set_irq_enabled_with_callback(BOOTSEL_BUTTON_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    
+    // Botão A
+    gpio_init(BUTTON_A_PIN);
+    gpio_set_dir(BUTTON_A_PIN, GPIO_IN);
+    gpio_pull_up(BUTTON_A_PIN);
+    gpio_set_irq_enabled(BUTTON_A_PIN, GPIO_IRQ_EDGE_FALL, true);
 }
 
 // Filtro Madgwick para fusão de sensores com quaternions
@@ -115,7 +135,7 @@ void quaternion_to_euler(float *roll, float *pitch, float *yaw) {
     // Pitch (y-axis rotation)
     float sinp = 2.0f * (q[0] * q[2] - q[3] * q[1]);
     if (fabsf(sinp) >= 1.0f)
-        *pitch = copysignf(90.0f, sinp); // Use 90 degrees if out of range
+        *pitch = copysignf(90.0f, sinp);
     else
         *pitch = asinf(sinp) * 180.0f / M_PI;
 
@@ -129,26 +149,51 @@ int main() {
     stdio_init_all();
     sleep_ms(4000);
 
-    setup_bootsel_button();
-    printf("Botao BOOTSEL configurado no GPIO 6\n");
+    setup_buttons();
+    printf("Botoes configurados no GPIO 6 e 5\n");
 
     if (!mpu6050_init(&mpu)) {
         printf("erro ao inicializar MPU6050\n");
         return 1;
     }
+    
+    display_init(&disp);
+    printf("Display inicializado\n");
+
+    display_draw_string(0, 0, "Calibrando...", true, &disp);
+    display_update(&disp);
 
     printf("Calibrando... mantenha o sensor parado e nivelado!\n");
     mpu6050_calibrate(&mpu, 1000);
     printf("Calibrado!\n");
+
+    display_clear(&disp);
+    display_draw_string(0, 0, "Calibrado!", true, &disp);
+    display_update(&disp);
+    sleep_ms(1000);
     
-    sleep_ms(500);
     last_time = get_absolute_time();
 
     while (true) {
+        // Verifica botão BOOTSEL
         if (button_pressed) {
             printf("\nEntrando em modo BOOTSEL...\n");
-            sleep_ms(100);
+            display_clear(&disp);
+            display_draw_string(0, 24, "BOOTSEL MODE", true, &disp);
+            display_update(&disp);
+            sleep_ms(2000);
+            display_clear(&disp);
+            display_update(&disp);
             reset_usb_boot(0, 0);
+        }
+
+        // Verifica botão A - limpa display
+        if (button_a_pressed) {
+            printf("Botao A pressionado - Limpando display\n");
+            display_clear(&disp);
+            display_update(&disp);
+            button_a_pressed = false;
+            sleep_ms(500);
         }
 
         mpu6050_data_t data;
@@ -169,6 +214,29 @@ int main() {
             // Converte para ângulos de Euler
             float roll, pitch, yaw;
             quaternion_to_euler(&roll, &pitch, &yaw);
+
+            // Atualiza display
+            display_clear(&disp);
+            
+            char buffer[32];
+            
+            // Exibe Roll
+            snprintf(buffer, sizeof(buffer), "Roll: %.1f", roll);
+            display_draw_string(0, 0, buffer, true, &disp);
+            
+            // Exibe Pitch
+            snprintf(buffer, sizeof(buffer), "Pitch: %.1f", pitch);
+            display_draw_string(0, 16, buffer, true, &disp);
+            
+            // Exibe Yaw
+            snprintf(buffer, sizeof(buffer), "Yaw: %.1f", yaw);
+            display_draw_string(0, 32, buffer, true, &disp);
+            
+            // Exibe temperatura
+            snprintf(buffer, sizeof(buffer), "Temp: %.1fC", data.temperature_c);
+            display_draw_string(0, 48, buffer, true, &disp);
+            
+            display_update(&disp);
 
             printf("%.2f,%.2f,%.2f\n", roll, pitch, yaw);
         }
