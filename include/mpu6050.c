@@ -258,12 +258,12 @@ float mpu6050_raw_to_celsius(int16_t raw_temp) {
     return 36.53f + ((float)raw_temp / 340.0f);
 }
 
-float mpu6050_calculate_pitch(float accel_x, float accel_y, float accel_z) {
-    return atan2(-accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * 180.0f / M_PI;
+float mpu6050_calculate_pitch(float ax, float ay, float az) {
+    return atan2(ay, sqrt(ax * ax + az * az)) * 180.0f / M_PI;
 }
 
-float mpu6050_calculate_roll(float accel_x, float accel_y, float accel_z) {
-    return atan2(accel_y, accel_z) * 180.0f / M_PI;
+float mpu6050_calculate_roll(float ax, float ay, float az) {
+    return atan2(-ax, az) * 180.0f / M_PI;
 }
 
 float mpu6050_calculate_magnitude(float x, float y, float z) {
